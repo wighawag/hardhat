@@ -1,19 +1,19 @@
 import { assert } from "chai";
 
-import { COINBASE_ADDRESS } from "../../../../../../../internal/hardhat-network/provider/node";
 import {
   RpcBlockOutput,
   RpcTransactionOutput,
-} from "../../../../../../../internal/hardhat-network/provider/output";
+} from "../../../../../../../src/internal/hardhat-network/provider/output";
 import { workaroundWindowsCiFailures } from "../../../../../../utils/workaround-windows-ci-failures";
 import { assertQuantity } from "../../../../helpers/assertions";
 import { setCWD } from "../../../../helpers/cwd";
 import { PROVIDERS } from "../../../../helpers/providers";
 import { retrieveForkBlockNumber } from "../../../../helpers/retrieveForkBlockNumber";
 import { sendTxToZeroAddress } from "../../../../helpers/transactions";
+import { DEFAULT_COINBASE } from "../../../../../../../src/internal/hardhat-network/provider/provider";
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork }) => {
     if (isFork) {
       this.timeout(50000);
     }
@@ -61,7 +61,7 @@ describe("Eth module", function () {
           assertQuantity(block.number, firstBlock + 1);
           assert.equal(block.transactions.length, 1);
           assert.include(block.transactions as string[], txHash);
-          assert.equal(block.miner, COINBASE_ADDRESS.toString());
+          assert.equal(block.miner, DEFAULT_COINBASE.toString());
           assert.isEmpty(block.uncles);
         });
 
@@ -81,7 +81,7 @@ describe("Eth module", function () {
           assert.equal(block.hash, txOutput.blockHash);
           assertQuantity(block.number, firstBlock + 1);
           assert.equal(block.transactions.length, 1);
-          assert.equal(block.miner, COINBASE_ADDRESS.toString());
+          assert.equal(block.miner, DEFAULT_COINBASE.toString());
           assert.deepEqual(
             block.transactions[0] as RpcTransactionOutput,
             txOutput

@@ -2,10 +2,7 @@ import { encode } from "cbor";
 import { assert } from "chai";
 
 import { Bytecode, compareBytecode } from "../../../src/solc/bytecode";
-import {
-  getSolcMetadataSectionLength,
-  METADATA_LENGTH_SIZE,
-} from "../../../src/solc/metadata";
+import { getSolcMetadataSectionLength } from "../../../src/solc/metadata";
 
 describe("Compiler bytecode and deployed bytecode matching", () => {
   describe("with a simple standalone contract", () => {
@@ -82,7 +79,12 @@ describe("Compiler bytecode and deployed bytecode matching", () => {
         moreData: 42,
         mysteriousString: "mystery",
       };
-      const mockMetadata = Buffer.from(encode(mockSolcMetadataMapping));
+      const encoded = encode(mockSolcMetadataMapping);
+      const mockMetadata = Buffer.from(
+        encoded.buffer,
+        encoded.byteOffset,
+        encoded.byteLength
+      );
       const length = Buffer.alloc(2);
       length.writeUInt16BE(mockMetadata.length, 0);
 

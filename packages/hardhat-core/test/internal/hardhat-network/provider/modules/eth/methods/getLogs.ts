@@ -3,7 +3,7 @@ import { assert } from "chai";
 import {
   numberToRpcQuantity,
   rpcQuantityToNumber,
-} from "../../../../../../../internal/core/jsonrpc/types/base-types";
+} from "../../../../../../../src/internal/core/jsonrpc/types/base-types";
 import { workaroundWindowsCiFailures } from "../../../../../../utils/workaround-windows-ci-failures";
 import { EXAMPLE_CONTRACT } from "../../../../helpers/contracts";
 import { setCWD } from "../../../../helpers/cwd";
@@ -15,7 +15,7 @@ import { retrieveForkBlockNumber } from "../../../../helpers/retrieveForkBlockNu
 import { deployContract } from "../../../../helpers/transactions";
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork }) => {
     if (isFork) {
       this.timeout(50000);
     }

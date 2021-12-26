@@ -105,7 +105,7 @@ function testArtifactsFunctionality() {
     try {
       await UsesLib.new();
       assert.fail("UsesLib shouldn't be deployeable if not linked");
-    } catch (error) {
+    } catch (error: any) {
       assert.include(error.message, "UsesLib contains unresolved libraries");
     }
   });
@@ -307,5 +307,15 @@ describe("Gas multiplier", function () {
     it("Should use the set one for functions", async function () {
       await assertItWorksForFunctions(this.env, DEFAULT_GAS_MULTIPLIER);
     });
+  });
+});
+
+describe("Contract function's accounts derivation", function () {
+  useEnvironment("hardhat-project-with-accounts", "hardhat");
+  it("Should derive the right accounts for hardhat network when contract is used in a test", async function () {
+    // We run a test in the fixture project that validates this
+    const result = await this.env.run("test");
+    assert.equal(result, 0);
+    process.exitCode = 0;
   });
 });

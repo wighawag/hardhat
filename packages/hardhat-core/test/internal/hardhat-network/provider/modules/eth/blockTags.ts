@@ -1,7 +1,7 @@
 import { assert } from "chai";
 import { zeroAddress } from "ethereumjs-util";
 
-import { RpcBlockOutput } from "../../../../../../internal/hardhat-network/provider/output";
+import { RpcBlockOutput } from "../../../../../../src/internal/hardhat-network/provider/output";
 import { workaroundWindowsCiFailures } from "../../../../../utils/workaround-windows-ci-failures";
 import {
   assertInvalidArgumentsError,
@@ -17,7 +17,7 @@ import { retrieveForkBlockNumber } from "../../../helpers/retrieveForkBlockNumbe
 import { deployContract } from "../../../helpers/transactions";
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork }) => {
     if (isFork) {
       this.timeout(50000);
     }

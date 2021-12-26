@@ -1,6 +1,5 @@
 import { assert } from "chai";
 
-import { COINBASE_ADDRESS } from "../../../../../../../internal/hardhat-network/provider/node";
 import { workaroundWindowsCiFailures } from "../../../../../../utils/workaround-windows-ci-failures";
 import {
   assertNotSupported,
@@ -11,13 +10,14 @@ import {
   DEFAULT_ACCOUNTS_ADDRESSES,
   PROVIDERS,
 } from "../../../../helpers/providers";
+import { DEFAULT_COINBASE } from "../../../../../../../src/internal/hardhat-network/provider/provider";
 
 /**
  * This file test the methods that are not covered by the other
  * files in this directory.
  */
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork, chainId }) => {
     if (isFork) {
       this.timeout(50000);
     }
@@ -43,10 +43,10 @@ describe("Eth module", function () {
       });
 
       describe("eth_coinbase", async function () {
-        it("should return the the hardcoded coinbase address", async function () {
+        it("should return the default coinbase address", async function () {
           assert.equal(
             await this.provider.send("eth_coinbase"),
-            COINBASE_ADDRESS.toString()
+            DEFAULT_COINBASE
           );
         });
       });
@@ -66,12 +66,6 @@ describe("Eth module", function () {
       describe("eth_compileSolidity", async function () {
         it("is not supported", async function () {
           await assertNotSupported(this.provider, "eth_compileSolidity");
-        });
-      });
-
-      describe("eth_gasPrice", async function () {
-        it("should return a fixed gas price", async function () {
-          assertQuantity(await this.provider.send("eth_gasPrice"), 8e9);
         });
       });
 

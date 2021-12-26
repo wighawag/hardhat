@@ -1,5 +1,4 @@
-[![npm](https://img.shields.io/npm/v/@nomiclabs/hardhat-etherscan.svg)](https://www.npmjs.com/package/@nomiclabs/hardhat-etherscan)
-[![hardhat](https://hardhat.org/buidler-plugin-badge.svg?1)](https://hardhat.org)
+[![npm](https://img.shields.io/npm/v/@nomiclabs/hardhat-etherscan.svg)](https://www.npmjs.com/package/@nomiclabs/hardhat-etherscan) [![hardhat](https://hardhat.org/buidler-plugin-badge.svg?1)](https://hardhat.org)
 
 # hardhat-etherscan
 
@@ -10,6 +9,7 @@
 This plugin helps you verify the source code for your Solidity contracts on [Etherscan](https://etherscan.io).
 
 It's smart and it tries to do as much as possible to facilitate the process:
+
 - Just provide the deployment address and constructor arguments, and the plugin will detect locally which contract to verify.
 - If your contract uses Solidity libraries, the plugin will detect them and deal with them automatically. You don't need to do anything about them.
 - A simulation of the verification process will run locally, allowing the plugin to detect and communicate any mistakes during the process.
@@ -57,6 +57,8 @@ module.exports = {
   }
 };
 ```
+
+Alternatively you can specify more than one block explorer API key, by passing an object under the `apiKey` property, see [`Multiple API keys and alternative block explorers`](#multiple-api-keys-and-alternative-block-explorers).
 
 Lastly, run the `verify` task, passing the address of the contract, the network where it's deployed, and the constructor arguments that were used to deploy it (if any):
 
@@ -117,13 +119,60 @@ where `libraries.js` looks like this:
 ```js
 module.exports = {
   SomeLibrary: "0x...",
-}
+};
+```
+
+### Multiple API keys and alternative block explorers
+
+If your project targets multiple EVM-compatible networks that have different explorers, you'll need to set multiple API keys.
+
+To configure the API keys for the chains you are using, provide an object under `etherscan/apiKey` with the identifier of each chain as the key. **This is not necessarily the same name that you are using to define the network**. The snippet below shows the values you should use for each chain:
+
+```js
+module.exports = {
+  networks: {
+    mainnet: { ... },
+    testnet: { ... }
+  },
+  etherscan: {
+    apiKey: {
+        mainnet: "YOUR_ETHERSCAN_API_KEY",
+        ropsten: "YOUR_ETHERSCAN_API_KEY",
+        rinkeby: "YOUR_ETHERSCAN_API_KEY",
+        goerli: "YOUR_ETHERSCAN_API_KEY",
+        kovan: "YOUR_ETHERSCAN_API_KEY",
+        // binance smart chain
+        bsc = "YOUR_BSCSCAN_API_KEY",
+        bscTestnet = "YOUR_BSCSCAN_API_KEY",
+        // huobi eco chain
+        heco = "YOUR_HECOINFO_API_KEY",
+        hecoTestnet = "YOUR_HECOINFO_API_KEY",
+        // fantom mainnet
+        opera = "YOUR_FTMSCAN_API_KEY",
+        ftmTestnet = "YOUR_FTMSCAN_API_KEY",
+        // optimistim
+        optimisticEthereum = "YOUR_OPTIMISTIC_ETHERSCAN_API_KEY",
+        optimisticKovan = "YOUR_OPTIMISTIC_ETHERSCAN_API_KEY",
+        // polygon
+        polygon = "YOUR_POLYGONSCAN_API_KEY",
+        polygonMumbai = "YOUR_POLYGONSCAN_API_KEY",
+        // arbitrum
+        arbitrumOne = "YOUR_ARBISCAN_API_KEY",
+        arbitrumTestnet = "YOUR_ARBISCAN_API_KEY",
+        // avalanche
+        avalanche = "YOUR_SNOWTRACE_API_KEY",
+        avalancheFujiTestnet = "YOUR_SNOWTRACE_API_KEY",
+        // moonriver
+        moonriver = "YOUR_MOONRIVER_MOONSCAN_API_KEY",
+        moonbaseAlpha = "YOUR_MOONRIVER_MOONSCAN_API_KEY",
+    }
+  }
+};
 ```
 
 ### Using programmatically
 
 To call the verification task from within a Hardhat task or script, use the `"verify:verify"` subtask. Assuming the same contract as [above](#complex-arguments), you can run the subtask like this:
-
 
 ```js
 await hre.run("verify:verify", {
@@ -137,7 +186,7 @@ await hre.run("verify:verify", {
     },
     "0xabcdef",
   ],
-})
+});
 ```
 
 If the verification is not successful, an error will be thrown.
@@ -162,3 +211,7 @@ The plugin works by fetching the bytecode in the given address and using it to c
 ## Known limitations
 
 - Adding, removing, moving or renaming new contracts to the hardhat project or reorganizing the directory structure of contracts after deployment may alter the resulting bytecode in some solc versions. See this [Solidity issue](https://github.com/ethereum/solidity/issues/9573) for further information.
+
+## Contributing
+
+See the [Contribution Guide](./CONTRIBUTING.md) for details.

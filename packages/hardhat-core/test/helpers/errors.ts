@@ -23,15 +23,17 @@ export async function expectErrorAsync(
       return;
     }
 
-    if (typeof errorMessage === "string") {
-      if (err.message !== errorMessage) {
-        notExactMatch.message += `${err.message}"`;
-        throw notExactMatch;
-      }
-    } else {
-      if (errorMessage.exec(err.message) === null) {
-        notRegexpMatch.message += `${err.message}"`;
-        throw notRegexpMatch;
+    if (err instanceof Error) {
+      if (typeof errorMessage === "string") {
+        if (err.message !== errorMessage) {
+          notExactMatch.message += `${err.message}"`;
+          throw notExactMatch;
+        }
+      } else {
+        if (errorMessage.exec(err.message) === null) {
+          notRegexpMatch.message += `${err.message}"`;
+          throw notRegexpMatch;
+        }
       }
     }
 
@@ -48,7 +50,7 @@ export function expectHardhatError(
 ) {
   try {
     f();
-  } catch (error) {
+  } catch (error: any) {
     assert.instanceOf(error, HardhatError);
     assert.equal(error.number, errorDescriptor.number);
     assert.notInclude(
@@ -98,29 +100,29 @@ export async function expectHardhatErrorAsync(
 
   try {
     await f();
-  } catch (error) {
-    assert.instanceOf(error, HardhatError);
-    assert.equal(error.number, errorDescriptor.number);
+  } catch (err: any) {
+    assert.instanceOf(err, HardhatError);
+    assert.equal(err.number, errorDescriptor.number);
     assert.notInclude(
-      error.message,
+      err.message,
       "%s",
       "HardhatError has old-style format tag"
     );
     assert.notMatch(
-      error.message,
+      err.message,
       /%[a-zA-Z][a-zA-Z0-9]*%/,
       "HardhatError has an non-replaced variable tag"
     );
 
     if (errorMessage !== undefined) {
       if (typeof errorMessage === "string") {
-        if (!error.message.includes(errorMessage)) {
-          notExactMatch.message += `${error.message}`;
+        if (!err.message.includes(errorMessage)) {
+          notExactMatch.message += `${err.message}`;
           throw notExactMatch;
         }
       } else {
-        if (errorMessage.exec(error.message) === null) {
-          notRegexpMatch.message += `${error.message}`;
+        if (errorMessage.exec(err.message) === null) {
+          notRegexpMatch.message += `${err.message}`;
           throw notRegexpMatch;
         }
       }

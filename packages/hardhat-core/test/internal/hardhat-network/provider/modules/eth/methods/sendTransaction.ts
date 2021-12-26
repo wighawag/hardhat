@@ -4,8 +4,9 @@ import { BN, bufferToHex, toBuffer, zeroAddress } from "ethereumjs-util";
 import {
   numberToRpcQuantity,
   rpcQuantityToNumber,
-} from "../../../../../../../internal/core/jsonrpc/types/base-types";
-import { InvalidInputError } from "../../../../../../../internal/core/providers/errors";
+  rpcQuantityToBN,
+} from "../../../../../../../src/internal/core/jsonrpc/types/base-types";
+import { InvalidInputError } from "../../../../../../../src/internal/core/providers/errors";
 import { workaroundWindowsCiFailures } from "../../../../../../utils/workaround-windows-ci-failures";
 import {
   assertInvalidInputError,
@@ -26,9 +27,14 @@ import {
   deployContract,
   sendTxToZeroAddress,
 } from "../../../../helpers/transactions";
+import { useHelpers } from "../../../../helpers/useHelpers";
+import {
+  EIP1559RpcTransactionOutput,
+  RpcBlockOutput,
+} from "../../../../../../../src/internal/hardhat-network/provider/output";
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc }) => {
     if (isFork) {
       this.timeout(50000);
     }
@@ -37,12 +43,14 @@ describe("Eth module", function () {
 
     describe(`${name} provider`, function () {
       setCWD();
-      useProvider();
-
-      const getFirstBlock = async () =>
-        isFork ? retrieveForkBlockNumber(this.ctx.hardhatNetworkProvider) : 0;
 
       describe("eth_sendTransaction", async function () {
+        useProvider();
+        useHelpers();
+
+        const getFirstBlock = async () =>
+          isFork ? retrieveForkBlockNumber(this.ctx.hardhatNetworkProvider) : 0;
+
         // Because of the way we are testing this (i.e. integration testing) it's almost impossible to
         // fully test this method in a reasonable amount of time. This is because it executes the core
         // of Ethereum: its state transition function.
@@ -59,7 +67,7 @@ describe("Eth module", function () {
                 from: zeroAddress(),
                 to: DEFAULT_ACCOUNTS_ADDRESSES[0],
                 gas: numberToRpcQuantity(21000),
-                gasPrice: numberToRpcQuantity(1),
+                gasPrice: numberToRpcQuantity(10e9),
               },
               "unknown account",
               InvalidInputError.CODE
@@ -81,7 +89,7 @@ describe("Eth module", function () {
               {
                 from: DEFAULT_ACCOUNTS_ADDRESSES[0],
                 gas: numberToRpcQuantity(21000),
-                gasPrice: numberToRpcQuantity(1),
+                gasPrice: numberToRpcQuantity(10e9),
               },
               "contract creation without any data provided",
               InvalidInputError.CODE
@@ -93,9 +101,89 @@ describe("Eth module", function () {
                 from: DEFAULT_ACCOUNTS_ADDRESSES[0],
                 data: "0x",
                 gas: numberToRpcQuantity(21000),
-                gasPrice: numberToRpcQuantity(1),
+                gasPrice: numberToRpcQuantity(10e9),
               },
               "contract creation without any data provided",
+              InvalidInputError.CODE
+            );
+          });
+
+          it("Should accept EIP-1559 transactions", async function () {
+            const hash = await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                value: numberToRpcQuantity(1),
+                gas: numberToRpcQuantity(21000),
+                maxFeePerGas: numberToRpcQuantity(10e9),
+                maxPriorityFeePerGas: numberToRpcQuantity(10e9),
+              },
+            ]);
+
+            assert.match(hash, /^0x[a-f\d]{64}$/);
+          });
+
+          it("Should throw if tx includes gasPrice, maxFeePerGas and maxPriorityFeePerGas", async function () {
+            await assertTransactionFailure(
+              this.provider,
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                value: numberToRpcQuantity(1),
+                gas: numberToRpcQuantity(21000),
+                gasPrice: numberToRpcQuantity(10e9),
+                maxFeePerGas: numberToRpcQuantity(10),
+                maxPriorityFeePerGas: numberToRpcQuantity(10),
+              },
+              "Cannot send both gasPrice and maxFeePerGas",
+              InvalidInputError.CODE
+            );
+          });
+
+          it("Should throw if tx includes gasPrice and maxFeePerGas", async function () {
+            await assertTransactionFailure(
+              this.provider,
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                value: numberToRpcQuantity(1),
+                gas: numberToRpcQuantity(21000),
+                gasPrice: numberToRpcQuantity(10),
+                maxFeePerGas: numberToRpcQuantity(10),
+              },
+              "Cannot send both gasPrice and maxFeePerGas",
+              InvalidInputError.CODE
+            );
+          });
+
+          it("Should throw if tx includes gasPrice and maxPriorityFeePerGas", async function () {
+            await assertTransactionFailure(
+              this.provider,
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                value: numberToRpcQuantity(1),
+                gas: numberToRpcQuantity(21000),
+                gasPrice: numberToRpcQuantity(1),
+                maxPriorityFeePerGas: numberToRpcQuantity(1),
+              },
+              "Cannot send both gasPrice and maxPriorityFeePerGas",
+              InvalidInputError.CODE
+            );
+          });
+
+          it("Should throw if maxPriorityFeePerGas is bigger than maxFeePerGas", async function () {
+            await assertTransactionFailure(
+              this.provider,
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                value: numberToRpcQuantity(1),
+                gas: numberToRpcQuantity(21000),
+                maxFeePerGas: numberToRpcQuantity(10),
+                maxPriorityFeePerGas: numberToRpcQuantity(20),
+              },
+              "maxPriorityFeePerGas (20) is bigger than maxFeePerGas (10)",
               InvalidInputError.CODE
             );
           });
@@ -128,7 +216,7 @@ describe("Eth module", function () {
                 to: DEFAULT_ACCOUNTS_ADDRESSES[1],
                 value: numberToRpcQuantity(1),
                 gas: numberToRpcQuantity(21000),
-                gasPrice: numberToRpcQuantity(1),
+                gasPrice: numberToRpcQuantity(10e9),
               },
             ]);
 
@@ -280,8 +368,7 @@ describe("Eth module", function () {
               this.provider,
               {
                 from: DEFAULT_ACCOUNTS_ADDRESSES[1],
-                data:
-                  "0x6000600060006000600060006000600060006000600060006000600060006000600060006000600060006000600060006000",
+                data: "0x6000600060006000600060006000600060006000600060006000600060006000600060006000600060006000600060006000",
                 gas: numberToRpcQuantity(53500),
               },
               "out of gas"
@@ -303,19 +390,20 @@ describe("Eth module", function () {
               this.provider,
               {
                 from: DEFAULT_ACCOUNTS_ADDRESSES[1],
-                data:
-                  "0x6080604052348015600f57600080fd5b506040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260018152602001807f410000000000000000000000000000000000000000000000000000000000000081525060200191505060405180910390fdfe",
+                data: "0x6080604052348015600f57600080fd5b506040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260018152602001807f410000000000000000000000000000000000000000000000000000000000000081525060200191505060405180910390fdfe",
               },
-              "revert A"
+              "reverted with reason string 'A'"
             );
           });
 
           describe("when there are pending transactions in the mempool", () => {
             describe("when the sent transaction fits in the first block", () => {
               it("Should throw if the sender doesn't have enough balance as a result of mining pending transactions first", async function () {
+                const gasPrice = 10;
+
                 const firstBlock = await getFirstBlock();
                 const wholeAccountBalance = numberToRpcQuantity(
-                  DEFAULT_ACCOUNTS_BALANCES[0].subn(21_000)
+                  DEFAULT_ACCOUNTS_BALANCES[0].subn(gasPrice * 21_000)
                 );
                 await this.provider.send("evm_setAutomine", [false]);
                 await this.provider.send("eth_sendTransaction", [
@@ -324,7 +412,7 @@ describe("Eth module", function () {
                     to: DEFAULT_ACCOUNTS_ADDRESSES[2],
                     nonce: numberToRpcQuantity(0),
                     gas: numberToRpcQuantity(21000),
-                    gasPrice: numberToRpcQuantity(1),
+                    gasPrice: numberToRpcQuantity(gasPrice),
                     value: wholeAccountBalance,
                   },
                 ]);
@@ -338,7 +426,7 @@ describe("Eth module", function () {
                       from: DEFAULT_ACCOUNTS_ADDRESSES[1],
                       to: DEFAULT_ACCOUNTS_ADDRESSES[2],
                       gas: numberToRpcQuantity(21000),
-                      gasPrice: numberToRpcQuantity(1),
+                      gasPrice: numberToRpcQuantity(10e9),
                       value: wholeAccountBalance,
                     },
                   ],
@@ -399,6 +487,8 @@ describe("Eth module", function () {
               });
 
               it("Should throw if the sender doesn't have enough balance as a result of mining pending transactions first", async function () {
+                const gasPrice = new BN(10e9);
+
                 const sendTransaction = async (
                   nonce: number,
                   value: BN | number
@@ -409,7 +499,7 @@ describe("Eth module", function () {
                       to: DEFAULT_ACCOUNTS_ADDRESSES[2],
                       nonce: numberToRpcQuantity(nonce),
                       gas: numberToRpcQuantity(21000),
-                      gasPrice: numberToRpcQuantity(1),
+                      gasPrice: numberToRpcQuantity(gasPrice),
                       value: numberToRpcQuantity(value),
                     },
                   ]);
@@ -420,7 +510,10 @@ describe("Eth module", function () {
                 await this.provider.send("evm_setAutomine", [false]);
                 await sendTransaction(0, 0);
                 await sendTransaction(1, 0);
-                await sendTransaction(2, initialBalance.subn(3 * 21_000));
+                await sendTransaction(
+                  2,
+                  initialBalance.sub(gasPrice.muln(21_000).muln(3))
+                );
 
                 await this.provider.send("evm_setAutomine", [true]);
 
@@ -432,7 +525,7 @@ describe("Eth module", function () {
                       from: DEFAULT_ACCOUNTS_ADDRESSES[1],
                       to: DEFAULT_ACCOUNTS_ADDRESSES[2],
                       gas: numberToRpcQuantity(21000),
-                      gasPrice: numberToRpcQuantity(1),
+                      gasPrice: numberToRpcQuantity(gasPrice),
                       value: numberToRpcQuantity(100),
                     },
                   ],
@@ -450,6 +543,48 @@ describe("Eth module", function () {
                 );
               });
             });
+          });
+
+          it("Should throw if a tx can't be mined in the next block because of its fees", async function () {
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                  maxFeePerGas: numberToRpcQuantity(1),
+                },
+              ],
+              "too low for the next block, which has a baseFeePerGas of"
+            );
+
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                  gasPrice: numberToRpcQuantity(1),
+                },
+              ],
+              "too low for the next block, which has a baseFeePerGas of"
+            );
+
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                  gasPrice: numberToRpcQuantity(1),
+                  accessList: [],
+                },
+              ],
+              "too low for the next block, which has a baseFeePerGas of"
+            );
           });
         });
 
@@ -475,6 +610,7 @@ describe("Eth module", function () {
               this.provider,
               DEFAULT_ACCOUNTS_ADDRESSES[1]
             );
+            await this.provider.send("evm_mine");
             await assertInvalidInputError(
               this.provider,
               "eth_sendTransaction",
@@ -506,6 +642,281 @@ describe("Eth module", function () {
               `Known transaction: ${bufferToHex(hash)}`
             );
           });
+
+          it("Should replace pending transactions", async function () {
+            const txHash1 = await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                nonce: numberToRpcQuantity(0),
+                gasPrice: numberToRpcQuantity(20e9),
+              },
+            ]);
+            let tx1 = await this.provider.send("eth_getTransactionByHash", [
+              txHash1,
+            ]);
+            assert.isNotNull(tx1);
+
+            const txHash2 = await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                nonce: numberToRpcQuantity(0),
+                gasPrice: numberToRpcQuantity(30e9),
+              },
+            ]);
+            tx1 = await this.provider.send("eth_getTransactionByHash", [
+              txHash1,
+            ]);
+            const tx2 = await this.provider.send("eth_getTransactionByHash", [
+              txHash2,
+            ]);
+            assert.isNull(tx1);
+            assert.isNotNull(tx2);
+
+            const pendingTxs = await this.provider.send(
+              "eth_pendingTransactions"
+            );
+
+            assert.lengthOf(pendingTxs, 1);
+            assert.equal(pendingTxs[0].hash, tx2.hash);
+
+            await this.provider.send("evm_mine");
+            const minedBlock = await this.provider.send(
+              "eth_getBlockByNumber",
+              ["latest", false]
+            );
+            assert.lengthOf(minedBlock.transactions, 1);
+            assert.equal(minedBlock.transactions[0], tx2.hash);
+          });
+
+          it("Should replace queued transactions", async function () {
+            const txHash1 = await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                nonce: numberToRpcQuantity(2),
+                gasPrice: numberToRpcQuantity(20),
+              },
+            ]);
+            let tx1 = await this.provider.send("eth_getTransactionByHash", [
+              txHash1,
+            ]);
+            assert.isNotNull(tx1);
+
+            const txHash2 = await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                nonce: numberToRpcQuantity(2),
+                gasPrice: numberToRpcQuantity(30),
+              },
+            ]);
+            tx1 = await this.provider.send("eth_getTransactionByHash", [
+              txHash1,
+            ]);
+            const tx2 = await this.provider.send("eth_getTransactionByHash", [
+              txHash2,
+            ]);
+            assert.isNull(tx1);
+            assert.isNotNull(tx2);
+
+            await this.provider.send("evm_mine");
+            const minedBlock = await this.provider.send(
+              "eth_getBlockByNumber",
+              ["latest", false]
+            );
+            assert.lengthOf(minedBlock.transactions, 0);
+          });
+
+          it("Should throw an error if the replacement gasPrice, maxFeePerGas or maxPriorityFeePerGas are too low", async function () {
+            const txHash1 = await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                nonce: numberToRpcQuantity(0),
+                gasPrice: numberToRpcQuantity(20e9),
+              },
+            ]);
+
+            let tx1 = await this.provider.send("eth_getTransactionByHash", [
+              txHash1,
+            ]);
+            assert.isNotNull(tx1);
+
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                  nonce: numberToRpcQuantity(0),
+                  gasPrice: numberToRpcQuantity(21e9),
+                },
+              ],
+              "Replacement transaction underpriced. A gasPrice/maxFeePerGas of at least 22000000000 is necessary to replace the existing transaction with nonce 0."
+            );
+
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                  nonce: numberToRpcQuantity(0),
+                  maxFeePerGas: numberToRpcQuantity(21e9),
+                },
+              ],
+              "Replacement transaction underpriced. A gasPrice/maxFeePerGas of at least 22000000000 is necessary to replace the existing transaction with nonce 0."
+            );
+
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+                  nonce: numberToRpcQuantity(0),
+                  maxPriorityFeePerGas: numberToRpcQuantity(21e9),
+                },
+              ],
+              "Replacement transaction underpriced. A gasPrice/maxPriorityFeePerGas of at least 22000000000 is necessary to replace the existing transaction with nonce 0."
+            );
+
+            // check that original tx was not replaced
+            tx1 = await this.provider.send("eth_getTransactionByHash", [
+              txHash1,
+            ]);
+            assert.isNotNull(tx1);
+
+            const pendingTxs = await this.provider.send(
+              "eth_pendingTransactions"
+            );
+
+            assert.lengthOf(pendingTxs, 1);
+            assert.equal(pendingTxs[0].hash, tx1.hash);
+
+            await this.provider.send("evm_mine");
+            const minedBlock = await this.provider.send(
+              "eth_getBlockByNumber",
+              ["latest", false]
+            );
+            assert.lengthOf(minedBlock.transactions, 1);
+            assert.equal(minedBlock.transactions[0], tx1.hash);
+          });
+        });
+
+        describe("Fee params default values", function () {
+          let nextBlockBaseFee: BN;
+          const ONE_GWEI = new BN(10).pow(new BN(9));
+
+          beforeEach(async function () {
+            // We disable automining as enqueueing the txs is enough and we want
+            // to test some that may have a low maxFeePerGas
+            await this.provider.send("evm_setAutomine", [false]);
+
+            const pendingBlock: RpcBlockOutput = await this.provider.send(
+              "eth_getBlockByNumber",
+              ["pending", false]
+            );
+
+            nextBlockBaseFee = rpcQuantityToBN(pendingBlock.baseFeePerGas!);
+          });
+
+          describe("When no fee param is provided", function () {
+            it("Should use 1gwei maxPriorityFeePerGas and base the maxFeePerGas on that plus 2 * next block's baseFee", async function () {
+              const txHash = await this.provider.send("eth_sendTransaction", [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                },
+              ]);
+
+              const tx: EIP1559RpcTransactionOutput = await this.provider.send(
+                "eth_getTransactionByHash",
+                [txHash]
+              );
+
+              assert.equal(
+                tx.maxPriorityFeePerGas,
+                numberToRpcQuantity(ONE_GWEI)
+              );
+              assert.equal(
+                tx.maxFeePerGas,
+                numberToRpcQuantity(nextBlockBaseFee.muln(2).add(ONE_GWEI))
+              );
+            });
+          });
+
+          describe("When maxFeePerGas is provided", function () {
+            it("Should use 1gwei maxPriorityFeePerGas if maxFeePerGas is >= 1gwei", async function () {
+              const txHash = await this.provider.send("eth_sendTransaction", [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  maxFeePerGas: numberToRpcQuantity(ONE_GWEI.muln(2)),
+                },
+              ]);
+
+              const tx: EIP1559RpcTransactionOutput = await this.provider.send(
+                "eth_getTransactionByHash",
+                [txHash]
+              );
+
+              assert.equal(
+                tx.maxPriorityFeePerGas,
+                numberToRpcQuantity(ONE_GWEI)
+              );
+              assert.equal(
+                tx.maxFeePerGas,
+                numberToRpcQuantity(ONE_GWEI.muln(2))
+              );
+            });
+
+            it("Should use 1gwei maxPriorityFeePerGas if maxFeePerGas is < 1gwei", async function () {
+              const txHash = await this.provider.send("eth_sendTransaction", [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  maxFeePerGas: numberToRpcQuantity(10000),
+                },
+              ]);
+
+              const tx: EIP1559RpcTransactionOutput = await this.provider.send(
+                "eth_getTransactionByHash",
+                [txHash]
+              );
+
+              assert.equal(tx.maxPriorityFeePerGas, numberToRpcQuantity(10000));
+              assert.equal(tx.maxFeePerGas, numberToRpcQuantity(10000));
+            });
+          });
+
+          describe("When maxPriorityFeePerGas is provided", function () {
+            it("Should use the maxPriorityFeePerGas and base the maxFeePerGas on that plus 2 * next block's baseFee", async function () {
+              const txHash = await this.provider.send("eth_sendTransaction", [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  maxPriorityFeePerGas: numberToRpcQuantity(1000),
+                },
+              ]);
+
+              const tx: EIP1559RpcTransactionOutput = await this.provider.send(
+                "eth_getTransactionByHash",
+                [txHash]
+              );
+
+              assert.equal(tx.maxPriorityFeePerGas, numberToRpcQuantity(1000));
+              assert.equal(
+                tx.maxFeePerGas,
+                numberToRpcQuantity(nextBlockBaseFee.muln(2).addn(1000))
+              );
+            });
+          });
         });
 
         describe("return txHash", () => {
@@ -520,14 +931,13 @@ describe("Eth module", function () {
                   from: DEFAULT_ACCOUNTS_ADDRESSES[0],
                   to: "0x0000000000000000000000000000000000000001",
                   gas: numberToRpcQuantity(21000), // Address 1 is a precompile, so this will OOG
-                  gasPrice: numberToRpcQuantity(1),
+                  gasPrice: numberToRpcQuantity(10e9),
                 },
               ]);
 
               assert.fail("Tx should have failed");
-            } catch (e) {
+            } catch (e: any) {
               assert.notInclude(e.message, "Tx should have failed");
-
               assert.isDefined(e.data.txHash);
             }
           });
@@ -552,7 +962,7 @@ describe("Eth module", function () {
               ]);
 
               assert.fail("Tx should have failed");
-            } catch (e) {
+            } catch (e: any) {
               assert.notInclude(e.message, "Tx should have failed");
 
               assert.isDefined(e.data.txHash);
@@ -578,8 +988,7 @@ describe("Eth module", function () {
             {
               from: DEFAULT_ACCOUNTS_ADDRESSES[0],
               to: daiAddress,
-              data:
-                "0x70a082310000000000000000000000000000000000000000000000000000000000000001",
+              data: "0x70a082310000000000000000000000000000000000000000000000000000000000000001",
             },
           ]);
 
@@ -598,12 +1007,80 @@ describe("Eth module", function () {
             {
               from: DEFAULT_ACCOUNTS_ADDRESSES[0],
               to: daiAddress,
-              data:
-                "0x70a082310000000000000000000000000000000000000000000000000000000000000001",
+              data: "0x70a082310000000000000000000000000000000000000000000000000000000000000001",
             },
           ]);
 
           assert.isTrue(new BN(toBuffer(balanceAfter)).isZero());
+        });
+      });
+
+      describe("eth_sendTransaction with minGasPrice", function () {
+        useProvider({ hardfork: "berlin" });
+        useHelpers();
+
+        const minGasPrice = 20;
+
+        beforeEach(async function () {
+          await this.provider.send("evm_setAutomine", [false]);
+          await this.provider.send("hardhat_setMinGasPrice", [
+            numberToRpcQuantity(minGasPrice),
+          ]);
+        });
+
+        it("should not mine transactions with a gas price below the minimum", async function () {
+          const txHash1 = await this.sendTx({
+            nonce: 0,
+            gasPrice: minGasPrice - 1,
+          });
+          const txHash2 = await this.sendTx({
+            nonce: 1,
+            gasPrice: minGasPrice - 1,
+          });
+
+          await this.assertPendingTxs([txHash1, txHash2]);
+          await this.mine();
+          await this.assertPendingTxs([txHash1, txHash2]);
+        });
+
+        it("should not mine a queued transaction if previous txs have a low gas price", async function () {
+          const txHash1 = await this.sendTx({
+            nonce: 0,
+            gasPrice: minGasPrice - 1,
+          });
+          const txHash2 = await this.sendTx({
+            nonce: 1,
+            gasPrice: minGasPrice - 1,
+          });
+          const txHash3 = await this.sendTx({
+            nonce: 2,
+            gasPrice: minGasPrice,
+          });
+
+          await this.assertPendingTxs([txHash1, txHash2, txHash3]);
+          await this.mine();
+          await this.assertPendingTxs([txHash1, txHash2, txHash3]);
+        });
+
+        it("should mine a pending tx even if txs from another account have a low gas price", async function () {
+          const txHash1 = await this.sendTx({
+            nonce: 0,
+            gasPrice: minGasPrice - 1,
+          });
+          const txHash2 = await this.sendTx({
+            nonce: 1,
+            gasPrice: minGasPrice - 1,
+          });
+          const txHash3 = await this.sendTx({
+            from: DEFAULT_ACCOUNTS_ADDRESSES[2],
+            nonce: 0,
+            gasPrice: minGasPrice + 1,
+          });
+
+          await this.assertPendingTxs([txHash1, txHash2, txHash3]);
+          await this.mine();
+          await this.assertPendingTxs([txHash1, txHash2]);
+          await this.assertLatestBlockTxs([txHash3]);
         });
       });
     });

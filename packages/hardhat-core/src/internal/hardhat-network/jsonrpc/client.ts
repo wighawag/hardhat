@@ -317,7 +317,7 @@ export class JsonRpcClient {
   ): Promise<any> {
     try {
       return await this._httpProvider.request({ method, params });
-    } catch (err) {
+    } catch (err: any) {
       if (this._shouldRetry(isRetryCall, err)) {
         return this._send(method, params, true);
       }
@@ -327,7 +327,7 @@ export class JsonRpcClient {
         return null;
       }
 
-      // tslint:disable-next-line only-hardhat-error
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
       throw err;
     }
   }
@@ -342,7 +342,7 @@ export class JsonRpcClient {
       if (this._shouldRetry(isRetryCall, err)) {
         return this._sendBatch(batch, true);
       }
-      // tslint:disable-next-line only-hardhat-error
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
       throw err;
     }
   }
@@ -429,12 +429,12 @@ export class JsonRpcClient {
           encoding: "utf8",
         }
       );
-    } catch (error) {
+    } catch (error: any) {
       if (error.code === "ENOENT") {
         return undefined;
       }
 
-      // tslint:disable-next-line only-hardhat-error
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
       throw error;
     }
   }

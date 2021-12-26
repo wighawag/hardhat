@@ -1,12 +1,15 @@
 import { assert } from "chai";
 import { BN, bufferToHex, toBuffer } from "ethereumjs-util";
 
-import { numberToRpcQuantity } from "../../../../../../../internal/core/jsonrpc/types/base-types";
-import { TransactionParams } from "../../../../../../../internal/hardhat-network/provider/node-types";
+import {
+  numberToRpcQuantity,
+  rpcQuantityToNumber,
+} from "../../../../../../../src/internal/core/jsonrpc/types/base-types";
+import { TransactionParams } from "../../../../../../../src/internal/hardhat-network/provider/node-types";
 import {
   RpcBlockOutput,
   RpcReceiptOutput,
-} from "../../../../../../../internal/hardhat-network/provider/output";
+} from "../../../../../../../src/internal/hardhat-network/provider/output";
 import { workaroundWindowsCiFailures } from "../../../../../../utils/workaround-windows-ci-failures";
 import {
   assertQuantity,
@@ -25,7 +28,7 @@ import {
 } from "../../../../helpers/transactions";
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork }) => {
     if (isFork) {
       this.timeout(50000);
     }
@@ -49,6 +52,65 @@ describe("Eth module", function () {
           );
 
           assert.isNull(receipt);
+        });
+
+        it("should return the right tx index and gas used", async function () {
+          const firstBlock = await getFirstBlock();
+          const contractAddress = await deployContract(
+            this.provider,
+            `0x${EXAMPLE_CONTRACT.bytecode.object}`
+          );
+
+          await this.provider.send("evm_setAutomine", [false]);
+          const txHashes = await Promise.all(
+            Array.from(new Array(2)).map(() =>
+              this.provider.send("eth_sendTransaction", [
+                {
+                  to: contractAddress,
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  data: `${EXAMPLE_CONTRACT.selectors.modifiesState}000000000000000000000000000000000000000000000000000000000000000a`,
+                  gas: `0x${new BN(150_000).toString(16)}`,
+                },
+              ])
+            )
+          );
+
+          await this.provider.send("evm_mine", []);
+          const block: RpcBlockOutput = await this.provider.send(
+            "eth_getBlockByNumber",
+            [numberToRpcQuantity(firstBlock + 2), false]
+          );
+
+          assert.equal(block.transactions.length, 2);
+
+          const receipts = await Promise.all(
+            txHashes.map(
+              (txHash) =>
+                this.provider.send("eth_getTransactionReceipt", [
+                  txHash,
+                ]) as Promise<RpcReceiptOutput>
+            )
+          );
+
+          let logIndex = 0;
+          let cumGasUsed = 0;
+
+          for (const receipt of receipts) {
+            cumGasUsed += rpcQuantityToNumber(receipt.gasUsed);
+            assert.equal(
+              cumGasUsed,
+              rpcQuantityToNumber(receipt.cumulativeGasUsed)
+            );
+            for (const event of receipt.logs) {
+              assert.equal(
+                logIndex,
+                rpcQuantityToNumber(
+                  event.logIndex === null ? "0" : event.logIndex
+                )
+              );
+              logIndex += 1;
+            }
+          }
         });
 
         it("should return the right values for successful txs", async function () {
@@ -117,7 +179,7 @@ describe("Eth module", function () {
             nonce: new BN(0),
             value: new BN(123),
             gasLimit: new BN(250000),
-            gasPrice: new BN(23912),
+            gasPrice: new BN(10e9),
           };
 
           const txHash = await getSignedTxHash(
@@ -155,7 +217,7 @@ describe("Eth module", function () {
               to: DEFAULT_ACCOUNTS_ADDRESSES[1],
               value: numberToRpcQuantity(1),
               gas: numberToRpcQuantity(21000),
-              gasPrice: numberToRpcQuantity(1),
+              gasPrice: numberToRpcQuantity(10e9),
             },
           ]);
 

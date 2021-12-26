@@ -1,12 +1,11 @@
 const defaultSlugify = require("@vuepress/shared-utils/lib/slugify");
-const plugins = require("./plugins.js");
-const pluginsChildren = [];
+const plugins = require("./sorted-plugins.js");
 
-plugins.forEach((plugin) => {
-  let readmePath = "/plugins/" + plugin.normalizedName + ".md";
-
-  pluginsChildren.push([readmePath, plugin.name, 0]);
-});
+const officialPlugins = plugins.officialPlugins.map((p) => [
+  "/plugins/" + p.normalizedName + ".md",
+  p.name,
+  0,
+]);
 
 module.exports = {
   title:
@@ -25,7 +24,7 @@ module.exports = {
     lastUpdated: true,
     repo: "nomiclabs/hardhat",
     docsDir: "docs",
-    docsBranch: "website",
+    docsBranch: "master",
     editLinkText: "Help us improve this page!",
     editLinks: true,
     sidebarDepth: 1,
@@ -76,14 +75,28 @@ module.exports = {
       "/": [
         ["/getting-started/", "Getting Started", 1],
         ["/config/", "Configuration", 0],
-        ["/hardhat-network/", "Hardhat Network", 0],
+        {
+          title: "Hardhat Network",
+          url: "/hardhat-network/",
+          collapsable: false,
+          depth: 1,
+          children: [
+            ["/hardhat-network/", "What is it?", 0],
+            [
+              "/hardhat-network/guides/mainnet-forking.md",
+              "Mainnet Forking",
+              0,
+            ],
+            ["/hardhat-network/explanation/mining-modes.md", "Mining Modes", 0],
+            ["/hardhat-network/reference/", "Reference", 0],
+          ],
+        },
         {
           title: "Guides",
           url: "/guides/",
           collapsable: false,
           depth: 1,
           children: [
-            ["/guides/migrate-from-buidler.md", "Migrating from Buidler", 0],
             ["/guides/project-setup.md", "Setting up a project", 0],
             ["/guides/compile-contracts.md", "Compiling your contracts", 0],
             ["/guides/waffle-testing.md", "Testing with ethers.js & Waffle", 0],
@@ -91,7 +104,6 @@ module.exports = {
             ["/guides/truffle-migration.md", "Migrating from Truffle", 0],
             ["/guides/deploying.md", "Deploying your contracts", 0],
             ["/guides/scripts.md", "Writing scripts", 0],
-            ["/guides/mainnet-forking.md", "Mainnet forking", 0],
             ["/guides/hardhat-console.md", "Using the Hardhat console", 0],
             ["/guides/create-task.md", "Creating a task", 0],
             ["/guides/ganache-tests.md", "Running tests with Ganache", 0],
@@ -130,6 +142,7 @@ module.exports = {
           title: "Reference",
           collapsable: false,
           children: [
+            ["/reference/stability-guarantees.html", "Stability guarantees", 0],
             ["/reference/solidity-support.html", "Solidity support", 0],
           ],
         },
@@ -137,14 +150,17 @@ module.exports = {
         {
           title: "Plugins",
           collapsable: false,
-          children: pluginsChildren,
+          children: [
+            ...officialPlugins,
+            ["/plugins/#community-plugins", "Community plugins", 0],
+          ],
         },
       ],
     },
     algolia: {
-      apiKey: '70d2567dd1257c8a53bbb823a0085f02',
-      indexName: 'hardhat'
-    }
+      apiKey: "70d2567dd1257c8a53bbb823a0085f02",
+      indexName: "hardhat",
+    },
   },
   head: [
     [

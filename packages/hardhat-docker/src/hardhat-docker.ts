@@ -85,7 +85,7 @@ export class HardhatDocker {
 
       return res.ok;
     } catch (error) {
-      throw new DockerHubConnectionError(error);
+      throw new DockerHubConnectionError(error as Error);
     }
   }
 
@@ -141,7 +141,7 @@ export class HardhatDocker {
       im.on("error", reject);
 
       // Not having the data handler causes the process to exit
-      im.on("data", (data) => {});
+      im.on("data", () => {});
     });
   }
 
@@ -159,6 +159,7 @@ export class HardhatDocker {
       HostConfig: {
         AutoRemove: true,
         Binds: this._bindsMapToArray(config.binds),
+        NetworkMode: config.networkMode,
       },
     };
 
@@ -196,7 +197,7 @@ export class HardhatDocker {
   private async _withCommonErrors<T>(promise: Promise<T>): Promise<T> {
     try {
       return await promise;
-    } catch (error) {
+    } catch (error: any) {
       if (error.code === "ECONNREFUSED") {
         throw new DockerNotRunningError(error);
       }
@@ -257,7 +258,7 @@ export class HardhatDocker {
 
       return json.config.digest;
     } catch (error) {
-      throw new DockerHubConnectionError(error);
+      throw new DockerHubConnectionError(error as Error);
     }
   }
 
@@ -280,13 +281,13 @@ export class HardhatDocker {
 
       return json.token;
     } catch (error) {
-      throw new DockerHubConnectionError(error);
+      throw new DockerHubConnectionError(error as Error);
     }
   }
 
   private _imageToRepositoryPath(image: Image): string {
     return image.repository.includes("/")
       ? image.repository
-      : `library/{image.repository}`;
+      : `library/${image.repository}`;
   }
 }

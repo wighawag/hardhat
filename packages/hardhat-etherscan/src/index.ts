@@ -45,11 +45,12 @@ import {
   toCheckStatusRequest,
   toVerifyRequest,
 } from "./etherscan/EtherscanVerifyContractRequest";
+import { chainConfig } from "./ChainConfig";
 import {
-  EtherscanURLs,
   getEtherscanEndpoints,
   retrieveContractBytecode,
 } from "./network/prober";
+import { resolveEtherscanApiKey } from "./resolveEtherscanApiKey";
 import {
   Bytecode,
   ContractInformation,
@@ -63,6 +64,7 @@ import {
 } from "./solc/metadata";
 import { getLongVersion } from "./solc/version";
 import "./type-extensions";
+import { EtherscanNetworkEntry, EtherscanURLs } from "./types";
 
 interface VerificationArgs {
   address: string;
@@ -156,15 +158,6 @@ const verifySubtask: ActionType<VerificationSubtaskArgs> = async (
 ) => {
   const { etherscan } = config;
 
-  if (etherscan.apiKey === undefined || etherscan.apiKey.trim() === "") {
-    throw new NomicLabsHardhatPluginError(
-      pluginName,
-      `Please provide an Etherscan API token via hardhat config.
-E.g.: { [...], etherscan: { apiKey: 'an API key' }, [...] }
-See https://etherscan.io/apis`
-    );
-  }
-
   const { isAddress } = await import("@ethersproject/address");
   if (!isAddress(address)) {
     throw new NomicLabsHardhatPluginError(
@@ -191,8 +184,14 @@ If your constructor has no arguments pass an empty array. E.g:
     TASK_VERIFY_GET_COMPILER_VERSIONS
   );
 
-  const etherscanAPIEndpoints: EtherscanURLs = await run(
-    TASK_VERIFY_GET_ETHERSCAN_ENDPOINT
+  const {
+    network: verificationNetwork,
+    urls: etherscanAPIEndpoints,
+  }: EtherscanNetworkEntry = await run(TASK_VERIFY_GET_ETHERSCAN_ENDPOINT);
+
+  const etherscanAPIKey = resolveEtherscanApiKey(
+    etherscan,
+    verificationNetwork
   );
 
   const deployedBytecodeHex = await retrieveContractBytecode(
@@ -207,7 +206,11 @@ If your constructor has no arguments pass an empty array. E.g:
   const matchingCompilerVersions = compilerVersions.filter((version) => {
     return semver.satisfies(version, inferredSolcVersion);
   });
-  if (matchingCompilerVersions.length === 0) {
+  if (
+    matchingCompilerVersions.length === 0 &&
+    // don't error if the bytecode appears to be OVM bytecode, because we can't infer a specific OVM solc version from the bytecode
+    !deployedBytecode.isOvmInferred()
+  ) {
     let configuredCompilersFragment;
     if (compilerVersions.length > 1) {
       configuredCompilersFragment = `your configured compiler versions are: ${compilerVersions.join(
@@ -239,6 +242,25 @@ Possible causes are:
     }
   );
 
+  // Override solc version based on hardhat config if verifying for the OVM. This is used instead of fetching the
+  // full version name from a solc bin JSON file (as is done for EVM solc in src/solc/version.ts) because it's
+  // simpler and avoids a network request we don't need. This is ok because the solc version specified in the OVM
+  // config always equals the full solc version
+  if (deployedBytecode.isOvmInferred()) {
+    // We cast to this custom type here instead of using `extendConfig` to avoid always mutating the HardhatConfig
+    // type. We don't want that type to always contain the `ovm` field, because users only using hardhat-etherscan
+    // without the Optimism plugin should not have that field in their type definitions
+    const configCopy = { ...config } as unknown as {
+      ovm?: { solcVersion?: string };
+    };
+    const ovmSolcVersion = configCopy.ovm?.solcVersion;
+    if (ovmSolcVersion === undefined) {
+      const message = `It looks like you are verifying an OVM contract, but do not have an OVM solcVersion specified in the hardhat config.`;
+      throw new NomicLabsHardhatPluginError(pluginName, message);
+    }
+    contractInformation.solcVersion = `v${ovmSolcVersion}`; // Etherscan requires the leading `v` before the version string
+  }
+
   const deployArgumentsEncoded = await encodeArguments(
     contractInformation.contract.abi,
     contractInformation.sourceName,
@@ -246,7 +268,10 @@ Possible causes are:
     constructorArguments
   );
 
-  const solcFullVersion = await getLongVersion(contractInformation.solcVersion);
+  // If OVM, the full version string was already read from the hardhat config. If solc, get the full version string
+  const solcFullVersion = deployedBytecode.isOvmInferred()
+    ? contractInformation.solcVersion
+    : await getLongVersion(contractInformation.solcVersion);
 
   const minimumBuild: Build = await run(TASK_VERIFY_GET_MINIMUM_BUILD, {
     sourceName: contractInformation.sourceName,
@@ -257,10 +282,11 @@ Possible causes are:
     contractInformation,
     etherscanAPIEndpoints,
     address,
-    etherscanAPIKey: etherscan.apiKey,
+    etherscanAPIKey,
     solcFullVersion,
     deployArgumentsEncoded,
   });
+
   if (success) {
     return;
   }
@@ -270,7 +296,7 @@ Possible causes are:
     etherscanAPIEndpoints,
     contractInformation,
     address,
-    etherscan.apiKey,
+    etherscanAPIKey,
     contractInformation.compilerInput,
     solcFullVersion,
     deployArgumentsEncoded
@@ -343,7 +369,7 @@ subtask(TASK_VERIFY_GET_CONSTRUCTOR_ARGUMENTS)
         }
 
         return constructorArguments;
-      } catch (error) {
+      } catch (error: any) {
         throw new NomicLabsHardhatPluginError(
           pluginName,
           `Importing the module for the constructor arguments list failed.
@@ -381,7 +407,7 @@ subtask(TASK_VERIFY_GET_LIBRARIES)
         }
 
         return libraries;
-      } catch (error) {
+      } catch (error: any) {
         throw new NomicLabsHardhatPluginError(
           pluginName,
           `Importing the module for the libraries dictionary failed.
@@ -417,7 +443,7 @@ async function attemptVerification(
   console.log(
     `Successfully submitted source code for contract
 ${contractInformation.sourceName}:${contractInformation.contractName} at ${contractAddress}
-for verification on Etherscan. Waiting for verification result...
+for verification on the block explorer. Waiting for verification result...
 `
   );
 
@@ -566,7 +592,7 @@ See https://etherscan.io/solcversions for more information.`
 );
 
 subtask(TASK_VERIFY_GET_ETHERSCAN_ENDPOINT).setAction(async (_, { network }) =>
-  getEtherscanEndpoints(network.provider, network.name)
+  getEtherscanEndpoints(network.provider, network.name, chainConfig)
 );
 
 subtask(TASK_VERIFY_GET_CONTRACT_INFORMATION)
@@ -613,7 +639,10 @@ Please make sure that it has been compiled by Hardhat and that it is written in 
           );
         }
 
-        if (!matchingCompilerVersions.includes(buildInfo.solcVersion)) {
+        if (
+          !matchingCompilerVersions.includes(buildInfo.solcVersion) &&
+          !deployedBytecode.isOvmInferred()
+        ) {
           const inferredSolcVersion = deployedBytecode.getInferredSolcVersion();
           let versionDetails;
           if (isVersionRange(inferredSolcVersion)) {
@@ -634,9 +663,8 @@ Possible causes are:
           );
         }
 
-        const { sourceName, contractName } = parseFullyQualifiedName(
-          contractFQN
-        );
+        const { sourceName, contractName } =
+          parseFullyQualifiedName(contractFQN);
         contractInformation = await extractMatchingContractInformation(
           sourceName,
           contractName,
@@ -701,6 +729,7 @@ subtask(TASK_VERIFY_VERIFY_MINIMUM_BUILD)
         minimumBuild.output.contracts[contractInformation.sourceName][
           contractInformation.contractName
         ].evm.deployedBytecode.object;
+
       const matchedBytecode =
         contractInformation.compilerOutput.contracts[
           contractInformation.sourceName

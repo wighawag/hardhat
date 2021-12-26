@@ -1,6 +1,6 @@
 import { assert } from "chai";
 
-import { numberToRpcQuantity } from "../../../../../../internal/core/jsonrpc/types/base-types";
+import { numberToRpcQuantity } from "../../../../../../src/internal/core/jsonrpc/types/base-types";
 import { workaroundWindowsCiFailures } from "../../../../../utils/workaround-windows-ci-failures";
 import { setCWD } from "../../../helpers/cwd";
 import {
@@ -10,7 +10,7 @@ import {
 import { retrieveForkBlockNumber } from "../../../helpers/retrieveForkBlockNumber";
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork }) => {
     if (isFork) {
       this.timeout(50000);
     }
@@ -37,7 +37,7 @@ describe("Eth module", function () {
               from: DEFAULT_ACCOUNTS_ADDRESSES[0],
               to: DEFAULT_ACCOUNTS_ADDRESSES[0],
               gas: numberToRpcQuantity(21000),
-              gasPrice: numberToRpcQuantity(1),
+              gasPrice: numberToRpcQuantity(10e9),
             },
           ]);
 
@@ -59,7 +59,7 @@ describe("Eth module", function () {
               from: DEFAULT_ACCOUNTS_ADDRESSES[0],
               to: DEFAULT_ACCOUNTS_ADDRESSES[0],
               gas: numberToRpcQuantity(21000),
-              gasPrice: numberToRpcQuantity(1),
+              gasPrice: numberToRpcQuantity(10e9),
             },
           ]);
           await this.provider.send("eth_sendTransaction", [
@@ -67,7 +67,7 @@ describe("Eth module", function () {
               from: DEFAULT_ACCOUNTS_ADDRESSES[0],
               to: DEFAULT_ACCOUNTS_ADDRESSES[0],
               gas: numberToRpcQuantity(21000),
-              gasPrice: numberToRpcQuantity(1),
+              gasPrice: numberToRpcQuantity(10e9),
             },
           ]);
           await this.provider.send("evm_mine", []);

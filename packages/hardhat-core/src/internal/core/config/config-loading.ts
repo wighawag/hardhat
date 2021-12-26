@@ -38,7 +38,16 @@ export function resolveConfigPath(configPath: string | undefined) {
 
 export function loadConfigAndTasks(
   hardhatArguments?: Partial<HardhatArguments>,
-  { showSolidityConfigWarnings } = { showSolidityConfigWarnings: false }
+  {
+    showEmptyConfigWarning = false,
+    showSolidityConfigWarnings = false,
+  }: {
+    showEmptyConfigWarning?: boolean;
+    showSolidityConfigWarnings?: boolean;
+  } = {
+    showEmptyConfigWarning: false,
+    showSolidityConfigWarnings: false,
+  }
 ): HardhatConfig {
   let configPath =
     hardhatArguments !== undefined ? hardhatArguments.config : undefined;
@@ -67,10 +76,14 @@ export function loadConfigAndTasks(
   } catch (e) {
     analyzeModuleNotFoundError(e, configPath);
 
-    // tslint:disable-next-line only-hardhat-error
+    // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
     throw e;
   } finally {
     ctx.setConfigLoadingAsFinished();
+  }
+
+  if (showEmptyConfigWarning) {
+    checkEmptyConfig(userConfig, { showSolidityConfigWarnings });
   }
 
   validateConfig(userConfig);
@@ -92,6 +105,7 @@ export function loadConfigAndTasks(
 
   if (showSolidityConfigWarnings) {
     checkUnsupportedSolidityConfig(resolved);
+    checkUnsupportedRemappings(resolved);
   }
 
   return resolved;
@@ -116,8 +130,8 @@ function deepFreezeUserConfig(
     set(
       target: any,
       property: string | number | symbol,
-      value: any,
-      receiver: any
+      _value: any,
+      _receiver: any
     ): boolean {
       throw new HardhatError(ERRORS.GENERAL.USER_CONFIG_MODIFIED, {
         path: [...propertyPath, property]
@@ -136,7 +150,8 @@ function deepFreezeUserConfig(
  * nothing.
  */
 export function analyzeModuleNotFoundError(error: any, configPath: string) {
-  const stackTraceParser = require("stacktrace-parser") as typeof StackTraceParserT;
+  const stackTraceParser =
+    require("stacktrace-parser") as typeof StackTraceParserT;
 
   if (error.code !== "MODULE_NOT_FOUND") {
     return;
@@ -213,8 +228,25 @@ function readPackageJson(packageName: string): PackageJson | undefined {
     );
 
     return require(packageJsonPath);
-  } catch (error) {
+  } catch {
     return undefined;
+  }
+}
+
+function checkEmptyConfig(
+  userConfig: any,
+  { showSolidityConfigWarnings }: { showSolidityConfigWarnings: boolean }
+) {
+  if (userConfig === undefined || Object.keys(userConfig).length === 0) {
+    let warning = `Hardhat config is returning an empty config object, check the export from the config file if this is unexpected.\n`;
+
+    // This 'learn more' section is also printed by the solidity config warning,
+    // so we need to check to avoid printing it twice
+    if (!showSolidityConfigWarnings) {
+      warning += `\nLearn more about configuring Hardhat at https://hardhat.org/config\n`;
+    }
+
+    console.warn(chalk.yellow(warning));
   }
 }
 
@@ -222,9 +254,9 @@ function checkMissingSolidityConfig(userConfig: any) {
   if (userConfig.solidity === undefined) {
     console.warn(
       chalk.yellow(
-        `Solidity compiler is not configured. Version ${DEFAULT_SOLC_VERSION} will be used by default. Add a 'solidity' entry to your configuration to supress this warning.
+        `Solidity compiler is not configured. Version ${DEFAULT_SOLC_VERSION} will be used by default. Add a 'solidity' entry to your configuration to suppress this warning.
 
-Learn more about compiler configuration at https://hardhat.org/config"
+Learn more about compiler configuration at https://hardhat.org/config
 `
       )
     );
@@ -254,7 +286,28 @@ function checkUnsupportedSolidityConfig(resolvedConfig: HardhatConfig) {
           unsupportedVersions.length === 1 ? "is" : "are"
         } not fully supported yet. You can still use Hardhat, but some features, like stack traces, might not work correctly.
 
-Learn more at https://hardhat.org/reference/solidity-support"
+Learn more at https://hardhat.org/reference/solidity-support
+`
+      )
+    );
+  }
+}
+
+function checkUnsupportedRemappings({ solidity }: HardhatConfig) {
+  const solcConfigs = [
+    ...solidity.compilers,
+    ...Object.values(solidity.overrides),
+  ];
+  const remappings = solcConfigs.filter(
+    ({ settings }) => settings.remappings !== undefined
+  );
+
+  if (remappings.length > 0) {
+    console.warn(
+      chalk.yellow(
+        `Solidity remappings are not currently supported; you may experience unexpected compilation results. Remove any 'remappings' fields from your configuration to suppress this warning.
+
+Learn more about compiler configuration at https://hardhat.org/config
 `
       )
     );

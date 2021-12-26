@@ -186,7 +186,7 @@ export class Resolver {
         );
       }
 
-      // tslint:disable-next-line only-hardhat-error
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
       throw error;
     }
   }
@@ -227,7 +227,7 @@ export class Resolver {
           {
             library: libraryName,
           },
-          error
+          error as Error
         );
       }
     }
@@ -440,7 +440,7 @@ export class Resolver {
         );
       }
 
-      // tslint:disable-next-line only-hardhat-error
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
       throw error;
     }
   }

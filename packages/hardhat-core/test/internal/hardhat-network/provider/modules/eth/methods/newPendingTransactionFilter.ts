@@ -1,14 +1,13 @@
 import { assert } from "chai";
 import { zeroAddress } from "ethereumjs-util";
 
-import { numberToRpcQuantity } from "../../../../../../../internal/core/jsonrpc/types/base-types";
+import { numberToRpcQuantity } from "../../../../../../../src/internal/core/jsonrpc/types/base-types";
 import { workaroundWindowsCiFailures } from "../../../../../../utils/workaround-windows-ci-failures";
 import { setCWD } from "../../../../helpers/cwd";
 import { PROVIDERS } from "../../../../helpers/providers";
-import { retrieveForkBlockNumber } from "../../../../helpers/retrieveForkBlockNumber";
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork }) => {
     if (isFork) {
       this.timeout(50000);
     }

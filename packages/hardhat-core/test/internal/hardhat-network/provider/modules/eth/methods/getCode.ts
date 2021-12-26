@@ -1,8 +1,8 @@
 import { assert } from "chai";
 import { zeroAddress } from "ethereumjs-util";
 
-import { numberToRpcQuantity } from "../../../../../../../internal/core/jsonrpc/types/base-types";
-import { randomAddress } from "../../../../../../../internal/hardhat-network/provider/fork/random";
+import { numberToRpcQuantity } from "../../../../../../../src/internal/core/jsonrpc/types/base-types";
+import { randomAddress } from "../../../../../../../src/internal/hardhat-network/provider/fork/random";
 import { workaroundWindowsCiFailures } from "../../../../../../utils/workaround-windows-ci-failures";
 import { assertInvalidInputError } from "../../../../helpers/assertions";
 import { EXAMPLE_CONTRACT } from "../../../../helpers/contracts";
@@ -18,7 +18,7 @@ import { deployContract } from "../../../../helpers/transactions";
 const PRECOMPILES_COUNT = 8;
 
 describe("Eth module", function () {
-  PROVIDERS.forEach(({ name, useProvider, isFork, isJsonRpc, chainId }) => {
+  PROVIDERS.forEach(({ name, useProvider, isFork }) => {
     if (isFork) {
       this.timeout(50000);
     }

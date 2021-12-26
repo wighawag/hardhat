@@ -1,9 +1,10 @@
 import { assert } from "chai";
 import { BN } from "ethereumjs-util";
-// tslint:disable-next-line:no-implicit-dependencies
+// eslint-disable-next-line import/no-extraneous-dependencies
 import { ethers } from "ethers";
 import sinon from "sinon";
 
+import { describe } from "mocha";
 import {
   numberToRpcQuantity,
   rpcQuantityToBN,
@@ -23,6 +24,7 @@ import { setCWD } from "../../helpers/cwd";
 import { DEFAULT_ACCOUNTS_ADDRESSES, PROVIDERS } from "../../helpers/providers";
 import { deployContract } from "../../helpers/transactions";
 import { compileLiteral } from "../../stack-traces/compilation";
+import { RpcBlockOutput } from "../../../../../src/internal/hardhat-network/provider/output";
 
 describe("Hardhat module", function () {
   PROVIDERS.forEach(({ name, useProvider, isFork }) => {
@@ -170,6 +172,19 @@ describe("Hardhat module", function () {
             "hardhat_stopImpersonatingAccount",
             [EMPTY_ACCOUNT_ADDRESS.toString()]
           );
+          assert.isFalse(result);
+        });
+      });
+
+      describe("hardhat_getAutomine", () => {
+        it("should return automine status true when enabled", async function () {
+          await this.provider.send("evm_setAutomine", [true]);
+          const result = await this.provider.send("hardhat_getAutomine");
+          assert.isTrue(result);
+        });
+        it("should return automine status false when disabled", async function () {
+          await this.provider.send("evm_setAutomine", [false]);
+          const result = await this.provider.send("hardhat_getAutomine");
           assert.isFalse(result);
         });
       });
@@ -1119,6 +1134,420 @@ describe("Hardhat module", function () {
             ]),
             targetStorageValue
           );
+        });
+      });
+
+      describe("hardhat_dropTransaction", function () {
+        it("should remove pending transactions", async function () {
+          await this.provider.send("evm_setAutomine", [false]);
+          const txHash = await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+              to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+              gas: numberToRpcQuantity(21_000),
+            },
+          ]);
+
+          const result = await this.provider.send("hardhat_dropTransaction", [
+            txHash,
+          ]);
+          const tx = await this.provider.send("eth_getTransactionByHash", [
+            txHash,
+          ]);
+
+          assert.isNull(tx);
+          assert.isTrue(result);
+        });
+
+        it("should remove queued transactions", async function () {
+          await this.provider.send("evm_setAutomine", [false]);
+          const txHash = await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+              to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+              gas: numberToRpcQuantity(21_000),
+              nonce: numberToRpcQuantity(1),
+            },
+          ]);
+
+          const result = await this.provider.send("hardhat_dropTransaction", [
+            txHash,
+          ]);
+
+          const tx = await this.provider.send("eth_getTransactionByHash", [
+            txHash,
+          ]);
+
+          assert.isNull(tx);
+          assert.isTrue(result);
+        });
+
+        it("should rearrange transactions after removing one", async function () {
+          await this.provider.send("evm_setAutomine", [false]);
+
+          // send 3 txs
+          const txHash1 = await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+              to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+              gas: numberToRpcQuantity(21_000),
+            },
+          ]);
+          const txHash2 = await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+              to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+              gas: numberToRpcQuantity(21_000),
+            },
+          ]);
+          const txHash3 = await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+              to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+              gas: numberToRpcQuantity(21_000),
+            },
+          ]);
+
+          // drop second transaction
+          const result = await this.provider.send("hardhat_dropTransaction", [
+            txHash2,
+          ]);
+          assert.isTrue(result);
+
+          // mine block; it should have only the first tx
+          await this.provider.send("evm_mine");
+          const block = await this.provider.send("eth_getBlockByNumber", [
+            "latest",
+            false,
+          ]);
+          assert.deepEqual(block.transactions, [txHash1]);
+
+          // the first and third tx should exist
+          const tx1 = await this.provider.send("eth_getTransactionByHash", [
+            txHash1,
+          ]);
+          const tx2 = await this.provider.send("eth_getTransactionByHash", [
+            txHash2,
+          ]);
+          const tx3 = await this.provider.send("eth_getTransactionByHash", [
+            txHash3,
+          ]);
+
+          assert.isNotNull(tx1);
+          assert.isNull(tx2);
+          assert.isNotNull(tx3);
+        });
+
+        it("should return false if a tx doesn't exist", async function () {
+          const nonExistentTxHash =
+            "0xa4b46baa47145cb30af1ceed6172604aed4d8a27f66077cad951113bebb9513d";
+          const result = await this.provider.send("hardhat_dropTransaction", [
+            nonExistentTxHash,
+          ]);
+
+          assert.isFalse(result);
+        });
+
+        it("should return false when called a second time", async function () {
+          await this.provider.send("evm_setAutomine", [false]);
+          const txHash = await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+              to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+              gas: numberToRpcQuantity(21_000),
+            },
+          ]);
+
+          const firstResult = await this.provider.send(
+            "hardhat_dropTransaction",
+            [txHash]
+          );
+          assert.isTrue(firstResult);
+          const secondResult = await this.provider.send(
+            "hardhat_dropTransaction",
+            [txHash]
+          );
+          assert.isFalse(secondResult);
+        });
+
+        it("should throw if the tx was already mined", async function () {
+          const txHash = await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+              to: DEFAULT_ACCOUNTS_ADDRESSES[2],
+            },
+          ]);
+
+          await assertInvalidArgumentsError(
+            this.provider,
+            "hardhat_dropTransaction",
+            [txHash]
+          );
+        });
+      });
+
+      describe("hardhat_setMinGasPrice", () => {
+        describe("When EIP-1559 is not active", function () {
+          useProvider({ hardfork: "berlin" });
+
+          describe("When automine is disabled", function () {
+            it("makes txs below the new min gas price not minable", async function () {
+              await this.provider.send("evm_setAutomine", [false]);
+
+              const tx1Hash = await this.provider.send("eth_sendTransaction", [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  to: EMPTY_ACCOUNT_ADDRESS.toString(),
+                  gas: numberToRpcQuantity(21_000),
+                  gasPrice: numberToRpcQuantity(10),
+                },
+              ]);
+              const tx2Hash = await this.provider.send("eth_sendTransaction", [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  to: EMPTY_ACCOUNT_ADDRESS.toString(),
+                  gas: numberToRpcQuantity(21_000),
+                  gasPrice: numberToRpcQuantity(20),
+                },
+              ]);
+
+              await this.provider.send("hardhat_setMinGasPrice", [
+                numberToRpcQuantity(15),
+              ]);
+
+              // check the two txs are pending
+              const pendingTransactionsBefore = await this.provider.send(
+                "eth_pendingTransactions"
+              );
+              assert.sameMembers(
+                pendingTransactionsBefore.map((x: any) => x.hash),
+                [tx1Hash, tx2Hash]
+              );
+
+              // check only the second one is mined
+              await this.provider.send("evm_mine");
+              const latestBlock = await this.provider.send(
+                "eth_getBlockByNumber",
+                ["latest", false]
+              );
+              assert.sameMembers(latestBlock.transactions, [tx2Hash]);
+
+              // check the first tx is still pending
+              const pendingTransactionsAfter = await this.provider.send(
+                "eth_pendingTransactions"
+              );
+              assert.sameMembers(
+                pendingTransactionsAfter.map((x: any) => x.hash),
+                [tx1Hash]
+              );
+            });
+          });
+
+          describe("When automine is enabled", function () {
+            it("Should make txs below the min gas price fail", async function () {
+              await this.provider.send("hardhat_setMinGasPrice", [
+                numberToRpcQuantity(20),
+              ]);
+
+              await assertInvalidInputError(
+                this.provider,
+                "eth_sendTransaction",
+                [
+                  {
+                    from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                    to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                    gasPrice: numberToRpcQuantity(10),
+                  },
+                ],
+                "Transaction gas price is 10, which is below the minimum of 20"
+              );
+            });
+          });
+        });
+
+        for (const hardfork of ["london", "arrowGlacier"]) {
+          describe(`When EIP-1559 is active (${hardfork})`, function () {
+            useProvider({ hardfork });
+
+            it("Should be disabled", async function () {
+              await assertInvalidInputError(
+                this.provider,
+                "hardhat_setMinGasPrice",
+                [numberToRpcQuantity(1)],
+                "hardhat_setMinGasPrice is not supported when EIP-1559 is active"
+              );
+            });
+          });
+        }
+      });
+
+      describe("hardhat_setNextBlockBaseFeePerGas", function () {
+        it("Should set the baseFee of a single block", async function () {
+          await this.provider.send("hardhat_setNextBlockBaseFeePerGas", [
+            numberToRpcQuantity(10),
+          ]);
+
+          await this.provider.send("evm_mine", []);
+
+          const block1: RpcBlockOutput = await this.provider.send(
+            "eth_getBlockByNumber",
+            ["latest", false]
+          );
+
+          assert.equal(block1.baseFeePerGas, numberToRpcQuantity(10));
+
+          await this.provider.send("evm_mine", []);
+
+          const block2: RpcBlockOutput = await this.provider.send(
+            "eth_getBlockByNumber",
+            ["latest", false]
+          );
+
+          assert.notEqual(block2.baseFeePerGas, numberToRpcQuantity(10));
+        });
+
+        describe("When automine is enabled", function () {
+          it("Should prevent you from sending transactions with lower maxFeePerGas or gasPrice", async function () {
+            await this.provider.send("hardhat_setNextBlockBaseFeePerGas", [
+              numberToRpcQuantity(10),
+            ]);
+
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  gasPrice: numberToRpcQuantity(9),
+                },
+              ],
+              "Transaction gasPrice (9) is too low for the next block, which has a baseFeePerGas of 10"
+            );
+
+            await assertInvalidInputError(
+              this.provider,
+              "eth_sendTransaction",
+              [
+                {
+                  from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                  to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                  maxFeePerGas: numberToRpcQuantity(8),
+                },
+              ],
+              "Transaction maxFeePerGas (8) is too low for the next block, which has a baseFeePerGas of 10"
+            );
+          });
+        });
+
+        describe("When automine is disabled", function () {
+          it("Should let you send transactions with lower maxFeePerGas or gasPrice, but not mine them", async function () {
+            await this.provider.send("hardhat_setNextBlockBaseFeePerGas", [
+              numberToRpcQuantity(10),
+            ]);
+
+            await this.provider.send("evm_setAutomine", [false]);
+
+            await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                gasPrice: numberToRpcQuantity(9),
+              },
+            ]);
+
+            await this.provider.send("eth_sendTransaction", [
+              {
+                from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+                to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+                maxFeePerGas: numberToRpcQuantity(8),
+              },
+            ]);
+
+            await this.provider.send("evm_mine", []);
+
+            const block: RpcBlockOutput = await this.provider.send(
+              "eth_getBlockByNumber",
+              ["latest", false]
+            );
+
+            assert.lengthOf(block.transactions, 0);
+          });
+        });
+
+        describe("When EIP-1559 is not active", function () {
+          useProvider({ hardfork: "berlin" });
+          it("should be disabled", async function () {
+            await assertInvalidInputError(
+              this.provider,
+              "hardhat_setNextBlockBaseFeePerGas",
+              [numberToRpcQuantity(8)],
+              "hardhat_setNextBlockBaseFeePerGas is disabled because EIP-1559 is not active"
+            );
+          });
+        });
+      });
+
+      describe("hardhat_setCoinbase", function () {
+        const cb1 = "0x1234567890123456789012345678901234567890";
+        const cb2 = "0x0987654321098765432109876543210987654321";
+
+        it("should set the coinbase for the new blocks", async function () {
+          await this.provider.send("hardhat_setCoinbase", [cb1]);
+          await this.provider.send("evm_mine", []);
+          const block1 = await this.provider.send("eth_getBlockByNumber", [
+            "latest",
+            false,
+          ]);
+          assert.equal(block1.miner, cb1);
+
+          await this.provider.send("hardhat_setCoinbase", [cb2]);
+
+          await this.provider.send("evm_mine", []);
+          const block2 = await this.provider.send("eth_getBlockByNumber", [
+            "latest",
+            false,
+          ]);
+          assert.equal(block2.miner, cb2);
+
+          await this.provider.send("evm_mine", []);
+          const block3 = await this.provider.send("eth_getBlockByNumber", [
+            "latest",
+            false,
+          ]);
+          assert.equal(block3.miner, cb2);
+        });
+
+        it("should be preserved in snapshots", async function () {
+          await this.provider.send("hardhat_setCoinbase", [cb1]);
+
+          const snapshot = await this.provider.send("evm_snapshot");
+
+          await this.provider.send("hardhat_setCoinbase", [cb2]);
+
+          await this.provider.send("evm_mine", []);
+          const block1 = await this.provider.send("eth_getBlockByNumber", [
+            "latest",
+            false,
+          ]);
+          assert.equal(block1.miner, cb2);
+
+          await this.provider.send("evm_revert", [snapshot]);
+
+          await this.provider.send("evm_mine", []);
+          const block1Again = await this.provider.send("eth_getBlockByNumber", [
+            "latest",
+            false,
+          ]);
+          assert.equal(block1Again.miner, cb1);
+        });
+
+        it("should affect eth_coinbase", async function () {
+          await this.provider.send("hardhat_setCoinbase", [cb1]);
+          assert.equal(await this.provider.send("eth_coinbase"), cb1);
+
+          await this.provider.send("hardhat_setCoinbase", [cb2]);
+          assert.equal(await this.provider.send("eth_coinbase"), cb2);
         });
       });
     });

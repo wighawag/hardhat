@@ -12,10 +12,13 @@
 // fields), we don't use `extends` as that can interfere with plugin authors
 // trying to augment the config types.
 
+import type { BN } from "ethereumjs-util";
+
 // Networks config
 
 export interface NetworksUserConfig {
   hardhat?: HardhatNetworkUserConfig;
+
   [networkName: string]: NetworkUserConfig | undefined;
 }
 
@@ -23,22 +26,38 @@ export type NetworkUserConfig =
   | HardhatNetworkUserConfig
   | HttpNetworkUserConfig;
 
+export interface HardforkHistoryUserConfig {
+  [hardforkName: string]: number /* block number */;
+}
+
+export interface HardhatNetworkChainUserConfig {
+  hardforkHistory?: HardforkHistoryUserConfig;
+}
+
+export interface HardhatNetworkChainsUserConfig {
+  [chainId: number]: HardhatNetworkChainUserConfig;
+}
+
 export interface HardhatNetworkUserConfig {
   chainId?: number;
   from?: string;
   gas?: "auto" | number;
   gasPrice?: "auto" | number;
   gasMultiplier?: number;
+  initialBaseFeePerGas?: number;
   hardfork?: string;
   mining?: HardhatNetworkMiningUserConfig;
   accounts?: HardhatNetworkAccountsUserConfig;
   blockGasLimit?: number;
+  minGasPrice?: number | string;
   throwOnTransactionFailures?: boolean;
   throwOnCallFailures?: boolean;
   allowUnlimitedContractSize?: boolean;
   initialDate?: string;
   loggingEnabled?: boolean;
   forking?: HardhatNetworkForkingUserConfig;
+  coinbase?: string;
+  chains?: HardhatNetworkChainsUserConfig;
 }
 
 export type HardhatNetworkAccountsUserConfig =
@@ -91,10 +110,25 @@ export interface HttpNetworkUserConfig {
 export interface NetworksConfig {
   hardhat: HardhatNetworkConfig;
   localhost: HttpNetworkConfig;
+
   [networkName: string]: NetworkConfig;
 }
 
 export type NetworkConfig = HardhatNetworkConfig | HttpNetworkConfig;
+
+export type HardforkHistoryConfig = Map<
+  /* hardforkName */ string,
+  /* blockNumber */ number
+>;
+
+export interface HardhatNetworkChainConfig {
+  hardforkHistory: HardforkHistoryConfig;
+}
+
+export type HardhatNetworkChainsConfig = Map<
+  /* chainId */ number,
+  HardhatNetworkChainConfig
+>;
 
 export interface HardhatNetworkConfig {
   chainId: number;
@@ -102,16 +136,20 @@ export interface HardhatNetworkConfig {
   gas: "auto" | number;
   gasPrice: "auto" | number;
   gasMultiplier: number;
+  initialBaseFeePerGas?: number;
   hardfork: string;
   mining: HardhatNetworkMiningConfig;
   accounts: HardhatNetworkAccountsConfig;
   blockGasLimit: number;
+  minGasPrice: BN;
   throwOnTransactionFailures: boolean;
   throwOnCallFailures: boolean;
   allowUnlimitedContractSize: boolean;
   initialDate: string;
   loggingEnabled: boolean;
   forking?: HardhatNetworkForkingConfig;
+  coinbase?: string;
+  chains: HardhatNetworkChainsConfig;
 }
 
 export type HardhatNetworkAccountsConfig =
@@ -164,11 +202,21 @@ export interface HttpNetworkHDAccountsConfig {
 export interface HardhatNetworkMiningConfig {
   auto: boolean;
   interval: number | [number, number];
+  mempool: HardhatNetworkMempoolConfig;
 }
 
 export interface HardhatNetworkMiningUserConfig {
   auto?: boolean;
   interval?: number | [number, number];
+  mempool?: HardhatNetworkMempoolUserConfig;
+}
+
+export interface HardhatNetworkMempoolConfig {
+  order: string; // Guaranteed at runtime to be have a valid value
+}
+
+export interface HardhatNetworkMempoolUserConfig {
+  order?: string;
 }
 
 // Project paths config

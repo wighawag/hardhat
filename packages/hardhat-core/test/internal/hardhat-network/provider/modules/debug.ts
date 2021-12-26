@@ -1,6 +1,8 @@
 import { assert } from "chai";
+import { BN } from "ethereumjs-util";
 import _ from "lodash";
 
+import { defaultHardhatNetworkParams } from "../../../../../src/internal/core/config/default-config";
 import { BackwardsCompatibilityProviderAdapter } from "../../../../../src/internal/core/providers/backwards-compatibility";
 import { ModulesLogger } from "../../../../../src/internal/hardhat-network/provider/modules/logger";
 import { ForkConfig } from "../../../../../src/internal/hardhat-network/provider/node-types";
@@ -53,6 +55,40 @@ describe("Debug module", function () {
             from: DEFAULT_ACCOUNTS_ADDRESSES[1],
           });
 
+          const trace: RpcDebugTraceOutput = await this.provider.send(
+            "debug_traceTransaction",
+            [txHash]
+          );
+          assert.deepEqual(trace, {
+            gas: 21000,
+            failed: false,
+            returnValue: "",
+            structLogs: [],
+          });
+        });
+
+        it("Should return the right values for fake sender txs", async function () {
+          const impersonatedAddress =
+            "0xC014BA5EC014ba5ec014Ba5EC014ba5Ec014bA5E";
+
+          await this.provider.send("eth_sendTransaction", [
+            {
+              from: DEFAULT_ACCOUNTS_ADDRESSES[0],
+              to: impersonatedAddress,
+              value: "0x100",
+            },
+          ]);
+
+          await this.provider.send("hardhat_impersonateAccount", [
+            impersonatedAddress,
+          ]);
+
+          const txHash = await this.provider.send("eth_sendTransaction", [
+            {
+              from: impersonatedAddress,
+              to: DEFAULT_ACCOUNTS_ADDRESSES[1],
+            },
+          ]);
           const trace: RpcDebugTraceOutput = await this.provider.send(
             "debug_traceTransaction",
             [txHash]
@@ -141,10 +177,14 @@ describe("Debug module", function () {
         DEFAULT_CHAIN_ID,
         DEFAULT_NETWORK_ID,
         13000000,
+        undefined,
+        new BN(0),
         true,
         true,
         false, // mining.auto
         0, // mining.interval
+        "priority", // mining.mempool.order
+        defaultHardhatNetworkParams.chains,
         logger,
         DEFAULT_ACCOUNTS,
         undefined,

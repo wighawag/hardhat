@@ -29,7 +29,7 @@ export async function verifyContract(
   let response: Response;
   try {
     response = await fetch(url, requestDetails);
-  } catch (error) {
+  } catch (error: any) {
     throw new NomicLabsHardhatPluginError(
       pluginName,
       `Failed to send contract verification request.
@@ -94,7 +94,7 @@ export async function getVerificationStatus(
 
       throw new NomicLabsHardhatPluginError(pluginName, message);
     }
-  } catch (error) {
+  } catch (error: any) {
     throw new NomicLabsHardhatPluginError(
       pluginName,
       `Failure during etherscan status polling. The verification may still succeed but
@@ -129,12 +129,12 @@ Reason: ${etherscanResponse.message}`
   return etherscanResponse;
 }
 
-export default class EtherscanResponse {
+export class EtherscanResponse {
   public readonly status: number;
 
   public readonly message: string;
 
-  public constructor(response: any) {
+  constructor(response: any) {
     this.status = parseInt(response.status, 10);
     this.message = response.result;
   }

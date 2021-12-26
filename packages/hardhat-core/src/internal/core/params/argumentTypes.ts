@@ -181,18 +181,23 @@ export const inputFile: CLIArgumentType<string> = {
 
       if (stats.isDirectory()) {
         // This is caught and encapsulated in a hardhat error.
-        // tslint:disable-next-line only-hardhat-error
+        // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
         throw new Error(`${strValue} is a directory, not a file`);
       }
     } catch (error) {
-      throw new HardhatError(
-        ERRORS.ARGUMENTS.INVALID_INPUT_FILE,
-        {
-          name: argName,
-          value: strValue,
-        },
-        error
-      );
+      if (error instanceof Error) {
+        throw new HardhatError(
+          ERRORS.ARGUMENTS.INVALID_INPUT_FILE,
+          {
+            name: argName,
+            value: strValue,
+          },
+          error
+        );
+      }
+
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
+      throw error;
     }
 
     return strValue;
@@ -212,15 +217,20 @@ export const inputFile: CLIArgumentType<string> = {
       inputFile.parse(argName, value);
     } catch (error) {
       // the input value is considered invalid, throw error.
-      throw new HardhatError(
-        ERRORS.ARGUMENTS.INVALID_VALUE_FOR_TYPE,
-        {
-          value,
-          name: argName,
-          type: inputFile.name,
-        },
-        error
-      );
+      if (error instanceof Error) {
+        throw new HardhatError(
+          ERRORS.ARGUMENTS.INVALID_VALUE_FOR_TYPE,
+          {
+            value,
+            name: argName,
+            type: inputFile.name,
+          },
+          error
+        );
+      }
+
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
+      throw error;
     }
   },
 };
@@ -231,14 +241,19 @@ export const json: CLIArgumentType<any> = {
     try {
       return JSON.parse(strValue);
     } catch (error) {
-      throw new HardhatError(
-        ERRORS.ARGUMENTS.INVALID_JSON_ARGUMENT,
-        {
-          param: argName,
-          error: error.message,
-        },
-        error
-      );
+      if (error instanceof Error) {
+        throw new HardhatError(
+          ERRORS.ARGUMENTS.INVALID_JSON_ARGUMENT,
+          {
+            param: argName,
+            error: error.message,
+          },
+          error
+        );
+      }
+
+      // eslint-disable-next-line @nomiclabs/hardhat-internal-rules/only-hardhat-error
+      throw error;
     }
   },
 
@@ -264,5 +279,5 @@ export const json: CLIArgumentType<any> = {
 
 export const any: ArgumentType<any> = {
   name: "any",
-  validate(argName: string, argumentValue: any) {},
+  validate(_argName: string, _argumentValue: any) {},
 };

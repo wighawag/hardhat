@@ -172,7 +172,7 @@ describe("config loading", function () {
       let errorThrown;
       try {
         loadConfigAndTasks();
-      } catch (e) {
+      } catch (e: any) {
         errorThrown = e;
       }
 
@@ -199,7 +199,7 @@ describe("config loading", function () {
       let errorThrown;
       try {
         loadConfigAndTasks();
-      } catch (e) {
+      } catch (e: any) {
         errorThrown = e;
       }
 
@@ -226,7 +226,7 @@ describe("config loading", function () {
       let errorThrown;
       try {
         loadConfigAndTasks();
-      } catch (e) {
+      } catch (e: any) {
         errorThrown = e;
       }
 
@@ -371,6 +371,25 @@ Hardhat plugin instead.`
       resetHardhatContext();
     });
 
+    it("should emit a warning if config is the empty object", function () {
+      loadConfigAndTasks(
+        {
+          config: "empty-config.js",
+        },
+        { showEmptyConfigWarning: true }
+      );
+
+      assert.equal(consoleWarnStub.callCount, 1);
+      assert.include(
+        consoleWarnStub.args[0][0],
+        "Hardhat config is returning an empty config object, check the export from the config file if this is unexpected."
+      );
+      assert.include(
+        consoleWarnStub.args[0][0],
+        "Learn more about configuring Hardhat at https://hardhat.org/config"
+      );
+    });
+
     it("should emit a warning if there's no configured solidity", function () {
       const config = loadConfigAndTasks(
         {
@@ -422,6 +441,51 @@ Hardhat plugin instead.`
 
       assert.equal(consoleWarnStub.callCount, 1);
       assert.include(consoleWarnStub.args[0][0], "is not fully supported yet");
+    });
+
+    it("should emit a warning if there is a remapping in the compiler settings", function () {
+      loadConfigAndTasks(
+        {
+          config: "remapping-in-settings.js",
+        },
+        { showSolidityConfigWarnings: true }
+      );
+
+      assert.equal(consoleWarnStub.callCount, 1);
+      assert.include(
+        consoleWarnStub.args[0][0],
+        "remappings are not currently supported"
+      );
+    });
+
+    it("should emit a warning if there is a remapping in the list of compiler settings", function () {
+      loadConfigAndTasks(
+        {
+          config: "remapping-in-list.js",
+        },
+        { showSolidityConfigWarnings: true }
+      );
+
+      assert.equal(consoleWarnStub.callCount, 1);
+      assert.include(
+        consoleWarnStub.args[0][0],
+        "remappings are not currently supported"
+      );
+    });
+
+    it("should emit a warning if there is a remapping in the list of compiler overrides", function () {
+      loadConfigAndTasks(
+        {
+          config: "remapping-in-override.js",
+        },
+        { showSolidityConfigWarnings: true }
+      );
+
+      assert.equal(consoleWarnStub.callCount, 1);
+      assert.include(
+        consoleWarnStub.args[0][0],
+        "remappings are not currently supported"
+      );
     });
   });
 });

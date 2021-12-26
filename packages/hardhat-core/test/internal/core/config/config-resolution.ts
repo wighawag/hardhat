@@ -1,4 +1,5 @@
 import { assert } from "chai";
+import { BN } from "ethereumjs-util";
 import cloneDeep from "lodash/cloneDeep";
 import * as path from "path";
 import sinon from "sinon";
@@ -23,6 +24,7 @@ import {
   HttpNetworkHDAccountsConfig,
   HttpNetworkUserConfig,
 } from "../../../../src/types";
+import { HardforkName } from "../../../../src/internal/util/hardforks";
 
 describe("Config resolution", () => {
   describe("Default config merging", () => {
@@ -38,8 +40,8 @@ describe("Config resolution", () => {
         assert.isUndefined(config.solidity.compilers[0]?.settings?.evmVersion);
         assert.equal(config.defaultNetwork, "hardhat");
 
-        const hardhatNetworkConfig: HardhatNetworkUserConfig = config.networks
-          .hardhat as HardhatNetworkUserConfig;
+        const hardhatNetworkConfig: HardhatNetworkConfig = config.networks
+          .hardhat as HardhatNetworkConfig;
 
         assert.equal(hardhatNetworkConfig.throwOnTransactionFailures, true);
         assert.equal(hardhatNetworkConfig.throwOnCallFailures, true);
@@ -115,7 +117,7 @@ describe("Config resolution", () => {
                   },
                   outputSelection: {
                     "*": {
-                      "*": ["metadata"],
+                      "*": ["ir"],
                     },
                   },
                 },
@@ -142,7 +144,7 @@ describe("Config resolution", () => {
         const modifiedOutputSelections = cloneDeep(defaultSolcOutputSelection);
 
         modifiedOutputSelections["*"]["*"] = [
-          "metadata",
+          "ir",
           ...modifiedOutputSelections["*"]["*"],
         ];
 
@@ -501,6 +503,9 @@ describe("Config resolution", () => {
           assert.deepEqual(config.networks.hardhat.mining, {
             auto: true,
             interval: 0,
+            mempool: {
+              order: "priority",
+            },
           });
         });
 
@@ -518,10 +523,13 @@ describe("Config resolution", () => {
           assert.deepEqual(config.networks.hardhat.mining, {
             auto: false,
             interval: 1000,
+            mempool: {
+              order: "priority",
+            },
           });
         });
 
-        it("should allow cofiguring only automine", function () {
+        it("should allow configuring only automine", function () {
           const config = resolveConfig(__filename, {
             networks: {
               hardhat: {
@@ -535,10 +543,13 @@ describe("Config resolution", () => {
           assert.deepEqual(config.networks.hardhat.mining, {
             auto: false,
             interval: 0,
+            mempool: {
+              order: "priority",
+            },
           });
         });
 
-        it("should allow cofiguring both values", function () {
+        it("should allow configuring both values", function () {
           const config = resolveConfig(__filename, {
             networks: {
               hardhat: {
@@ -553,6 +564,9 @@ describe("Config resolution", () => {
           assert.deepEqual(config.networks.hardhat.mining, {
             auto: true,
             interval: 1000,
+            mempool: {
+              order: "priority",
+            },
           });
         });
 
@@ -570,12 +584,78 @@ describe("Config resolution", () => {
           assert.deepEqual(config.networks.hardhat.mining, {
             auto: false,
             interval: [1000, 5000],
+            mempool: {
+              order: "priority",
+            },
+          });
+        });
+
+        it("should set the mempool order", function () {
+          const config = resolveConfig(__filename, {
+            networks: {
+              hardhat: {
+                mining: {
+                  mempool: {
+                    order: "fifo",
+                  },
+                },
+              },
+            },
+          });
+
+          assert.deepEqual(config.networks.hardhat.mining, {
+            auto: true,
+            interval: 0,
+            mempool: {
+              order: "fifo",
+            },
           });
         });
       });
 
+      describe("minGasPrice", function () {
+        it("should default to 0", function () {
+          const config = resolveConfig(__filename, {});
+
+          assert.equal(
+            config.networks.hardhat.minGasPrice.toString(),
+            new BN(0).toString()
+          );
+        });
+
+        it("should accept numbers", function () {
+          const config = resolveConfig(__filename, {
+            networks: {
+              hardhat: {
+                minGasPrice: 10,
+              },
+            },
+          });
+
+          assert.equal(
+            config.networks.hardhat.minGasPrice.toString(),
+            new BN(10).toString()
+          );
+        });
+
+        it("should accept strings", function () {
+          const config = resolveConfig(__filename, {
+            networks: {
+              hardhat: {
+                minGasPrice: "100000000000",
+              },
+            },
+          });
+
+          assert.equal(
+            config.networks.hardhat.minGasPrice.toString(),
+            new BN(10).pow(new BN(11)).toString()
+          );
+        });
+      });
+
       it("Should let you configure everything", function () {
-        const networkConfig: HardhatNetworkConfig = {
+        const networkConfig: HardhatNetworkUserConfig = {
           accounts: [{ privateKey: "0x00000", balance: "123" }],
           chainId: 123,
           from: "from",
@@ -587,19 +667,74 @@ describe("Config resolution", () => {
           loggingEnabled: true,
           allowUnlimitedContractSize: true,
           blockGasLimit: 567,
+          minGasPrice: 10,
           mining: {
             auto: false,
             interval: 0,
+            mempool: {
+              order: "priority",
+            },
           },
           hardfork: "hola",
           initialDate: "today",
+          chains: {},
         };
 
         const config = resolveConfig(__filename, {
           networks: { hardhat: networkConfig },
         });
 
-        assert.deepEqual(config.networks.hardhat, networkConfig);
+        assert.deepEqual(config.networks.hardhat, {
+          ...networkConfig,
+          minGasPrice: new BN(10),
+          chains: defaultHardhatNetworkParams.chains,
+        });
+      });
+
+      describe("chains", function () {
+        it("should default to default", function () {
+          const resolvedConfig = resolveConfig(__filename, {});
+          assert.deepEqual(
+            Array.from(resolvedConfig.networks.hardhat.chains.entries()),
+            Array.from(defaultHardhatNetworkParams.chains.entries())
+          );
+        });
+        describe("mixing defaults and user configs", function () {
+          const userConfig = {
+            networks: {
+              hardhat: { chains: { 1: { hardforkHistory: { london: 999 } } } },
+            },
+          };
+          const resolvedConfig = resolveConfig(__filename, userConfig);
+          it("If the user provides values for a chain that's included in the default, should use the users' values, and ignore the defaults for that chain.", function () {
+            assert.deepEqual(resolvedConfig.networks.hardhat.chains.get(1), {
+              hardforkHistory: new Map([[HardforkName.LONDON, 999]]),
+            });
+          });
+          it("If they don't provide any value for a default chain, should use the default for that one.", function () {
+            for (const otherChain of Array.from(
+              defaultHardhatNetworkParams.chains.keys()
+            )) {
+              if (otherChain === 1) continue; // don't expect the default there
+              assert.deepEqual(
+                resolvedConfig.networks.hardhat.chains.get(otherChain),
+                defaultHardhatNetworkParams.chains.get(otherChain)
+              );
+            }
+          });
+        });
+        it("If the user provides values for a chain that's not part of the default, should also use those.", function () {
+          const resolvedConfig = resolveConfig(__filename, {
+            networks: {
+              hardhat: {
+                chains: { 999: { hardforkHistory: { london: 1234 } } },
+              },
+            },
+          });
+          assert.deepEqual(resolvedConfig.networks.hardhat.chains.get(999), {
+            hardforkHistory: new Map([[HardforkName.LONDON, 1234]]),
+          });
+        });
       });
     });
 
@@ -687,7 +822,8 @@ describe("Config resolution", () => {
 
           const httpNetConfig = config.networks.other as HttpNetworkConfig;
 
-          const accounts = httpNetConfig.accounts as HttpNetworkHDAccountsConfig;
+          const accounts =
+            httpNetConfig.accounts as HttpNetworkHDAccountsConfig;
           assert.deepEqual(accounts, {
             mnemonic: "mmmmm",
             ...defaultHdAccountsConfigParams,
